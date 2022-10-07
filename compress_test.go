@@ -5,10 +5,11 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"github.com/stretchr/testify/require"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 type testVector struct {
@@ -50,7 +51,7 @@ func loadTestVector(t *testing.T, tv testVector) []byte {
 	var err error
 	if tv.inFile {
 		path := filepath.Join("testdata", tv.data) // relative path
-		raw, err := ioutil.ReadFile(path)
+		raw, err := os.ReadFile(path)
 		data = string(raw)
 		require.NoError(t, err)
 	} else {

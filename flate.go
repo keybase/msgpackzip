@@ -3,7 +3,7 @@ package msgpackzip
 import (
 	"bytes"
 	"compress/flate"
-	"io/ioutil"
+	"io"
 )
 
 func flateCompress(b []byte) ([]byte, error) {
@@ -26,5 +26,5 @@ func flateCompress(b []byte) ([]byte, error) {
 func flateInflate(b []byte) ([]byte, error) {
 	buf := bytes.NewBuffer(b)
 	zr := flate.NewReader(buf)
-	return ioutil.ReadAll(zr)
+	return io.ReadAll(zr)
 }

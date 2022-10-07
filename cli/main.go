@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 
 	"github.com/keybase/msgpackzip"
@@ -18,7 +17,7 @@ func main() {
 	}
 
 	inputPath := args[0]
-	in, err := ioutil.ReadFile(inputPath)
+	in, err := os.ReadFile(inputPath)
 	if err != nil {
 		fmt.Printf("Unable to read input file: %v\n", err)
 		os.Exit(3)
@@ -30,7 +29,7 @@ func main() {
 	}
 	outputPath := fmt.Sprintf("%s.mpzip", inputPath)
 	fmt.Printf("Outputting compressed data to %s\n", outputPath)
-	if err := ioutil.WriteFile(outputPath, out, 0644); err != nil {
+	if err := os.WriteFile(outputPath, out, 0644); err != nil {
 		fmt.Printf("Unable to write output: %v\n", err)
 		os.Exit(3)
 	}
