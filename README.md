@@ -1,7 +1,6 @@
-
 # msgpackzip
 
-[![Build Status](https://travis-ci.com/keybase/msgpackzip.svg?branch=master)](https://travis-ci.com/keybase/msgpackzip)
+[![Build Status](https://github.com/keybase/msgpackzip/actions/workflows/ci.yml/badge.svg)](https://github.com/keybase/msgpackzip/actions)
 
 ## Usage
 
