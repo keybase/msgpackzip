@@ -128,7 +128,7 @@ func (c *compressor) collectFrequencies() (ret map[interface{}]int, err error) {
 	hooks := msgpackDecoderHooks{
 		mapKeyHook: func(d decodeStack) (decodeStack, error) {
 			d.hooks = msgpackDecoderHooks{
-				stringHook: func(l msgpackInt, s string) error {
+				stringHook: func(_ msgpackInt, s string) error {
 					if c.collectMapKeys {
 						ret[s]++
 					}
@@ -144,19 +144,19 @@ func (c *compressor) collectFrequencies() (ret map[interface{}]int, err error) {
 					}
 					return nil
 				},
-				fallthroughHook: func(i interface{}, s string) error {
+				fallthroughHook: func(i interface{}, _ string) error {
 					return fmt.Errorf("bad map key (type %T)", i)
 				},
 			}
 			return d, nil
 		},
-		stringHook: func(l msgpackInt, s string) error {
+		stringHook: func(_ msgpackInt, s string) error {
 			if c.valueWhitelist.hasString(s) {
 				ret[s]++
 			}
 			return nil
 		},
-		binaryHook: func(l msgpackInt, b []byte) error {
+		binaryHook: func(_ msgpackInt, b []byte) error {
 			s := string(b)
 			if c.valueWhitelist.hasBinary(b) {
 				ret[BinaryMapKey(s)]++
@@ -244,14 +244,14 @@ func (c *compressor) outputData(keys map[interface{}]uint) (output []byte, err e
 				}
 				return data.outputRawUint(val)
 			},
-			stringHook: func(l msgpackInt, s string) error {
+			stringHook: func(_ msgpackInt, s string) error {
 				val, ok := keys[s]
 				if !ok {
 					return fmt.Errorf("unexpected map key: %q", s)
 				}
 				return data.outputRawUint(val)
 			},
-			fallthroughHook: func(i interface{}, s string) error {
+			fallthroughHook: func(i interface{}, _ string) error {
 				return fmt.Errorf("bad map key (type %T)", i)
 			},
 		}
@@ -277,7 +277,7 @@ func (c *compressor) outputData(keys map[interface{}]uint) (output []byte, err e
 	}
 
 	// external data types are output and aren't allowed in inputs
-	hooks.extHook = func(b []byte) error {
+	hooks.extHook = func(_ []byte) error {
 		return fmt.Errorf("cannot handle external data types")
 	}
 

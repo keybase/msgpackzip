@@ -73,7 +73,7 @@ func (c *inflator) openOuter() (version int, compressedData []byte, compressedKe
 			idx++
 			return nil
 		},
-		binaryHook: func(i msgpackInt, b []byte) error {
+		binaryHook: func(_ msgpackInt, b []byte) error {
 			switch idx {
 			case 1:
 				compressedData = b
@@ -85,7 +85,7 @@ func (c *inflator) openOuter() (version int, compressedData []byte, compressedKe
 			idx++
 			return nil
 		},
-		fallthroughHook: func(i interface{}, typ string) error {
+		fallthroughHook: func(_ interface{}, typ string) error {
 			return fmt.Errorf("unexpected value of type %q at top level", typ)
 		},
 	}
@@ -127,7 +127,7 @@ func (c *inflator) inflateKeymap(compressedKeymap []byte) (keymap map[uint]inter
 		return nil
 	}
 
-	fallthroughHook := func(i interface{}, typ string) error {
+	fallthroughHook := func(_ interface{}, typ string) error {
 		return fmt.Errorf("unexpected value of type %q in keymap", typ)
 	}
 
@@ -165,10 +165,10 @@ func (c *inflator) inflateKeymap(compressedKeymap []byte) (keymap map[uint]inter
 					}
 					return putValue(i)
 				},
-				stringHook: func(mpi msgpackInt, s string) error {
+				stringHook: func(_ msgpackInt, s string) error {
 					return putValue(s)
 				},
-				binaryHook: func(mpi msgpackInt, b []byte) error {
+				binaryHook: func(_ msgpackInt, b []byte) error {
 					return putValue(BinaryMapKey(string(b)))
 				},
 				fallthroughHook: fallthroughHook,
@@ -234,7 +234,7 @@ func (c *inflator) inflateData(keymap map[uint]interface{}, compressedData []byt
 				}
 				return data.outputStringOrUintOrBinary(key)
 			},
-			fallthroughHook: func(i interface{}, typ string) error {
+			fallthroughHook: func(_ interface{}, typ string) error {
 				return fmt.Errorf("Expected only int map keys; got a %q", typ)
 			},
 		}
