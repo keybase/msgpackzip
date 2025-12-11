@@ -2,6 +2,7 @@ package msgpackzip
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"sort"
 )
@@ -84,22 +85,17 @@ func ReportValuesFrequencies(input []byte) (ret []Frequency, err error) {
 // an list of frequencies of map keys (and values if we have an active whitelist)
 // and returns a sorted list of those values, from most frequent to least frequent.
 func (c *compressor) collectAndSortFrequencies() (ret []Frequency, err error) {
-
 	freqs, err := c.collectFrequencies()
 	if err != nil {
 		return nil, err
 	}
-	freqsSorted, err := c.sortFrequencies(freqs)
-	if err != nil {
-		return nil, err
-	}
+	freqsSorted := c.sortFrequencies(freqs)
 	return freqsSorted, nil
 }
 
 // run the compressor on the given input. Can be used only once
 // per instantiation of compressor object.
 func (c *compressor) run() (output []byte, err error) {
-
 	freqsSorted, err := c.collectAndSortFrequencies()
 	if err != nil {
 		return nil, err
@@ -123,7 +119,6 @@ type BinaryMapKey string
 // be an int64, a plain old string, or a binary []byte buffer wrapped in a
 // BinaryMapKey.
 func (c *compressor) collectFrequencies() (ret map[interface{}]int, err error) {
-
 	ret = make(map[interface{}]int)
 	hooks := msgpackDecoderHooks{
 		mapKeyHook: func(d decodeStack) (decodeStack, error) {
@@ -180,25 +175,27 @@ type Frequency struct {
 }
 
 // sortFrequencies converts a map of (keys -> counts) into an ordered vector of frequencies.
-func (c *compressor) sortFrequencies(freqs map[interface{}]int) (ret []Frequency, err error) {
-
-	ret = make([]Frequency, len(freqs))
+func (c *compressor) sortFrequencies(freqs map[interface{}]int) []Frequency {
+	ret := make([]Frequency, len(freqs))
 	var i int
 	for k, v := range freqs {
 		ret[i] = Frequency{k, v}
 		i++
 	}
 	sort.SliceStable(ret, func(i, j int) bool { return ret[i].Freq > ret[j].Freq })
-	return ret, nil
+	return ret
 }
 
 // frequenciesToMap converts a sorted vectors of frequencies to a map (key -> uint),
 // where the RHS values are ordered 0 to N. The idea is that the most frequent
 // keys get ths smallest values, which take of the least space when msgpack encoded.
-// This function returns the "keyMap" refered to later.
-func (c *compressor) frequenciesToMap(freqs []Frequency) (keys map[interface{}]uint, err error) {
+// This function returns the "keyMap" referred to later.
+func (c *compressor) frequenciesToMap(freqs []Frequency) (map[interface{}]uint, error) {
 	ret := make(map[interface{}]uint, len(freqs))
 	for i, freq := range freqs {
+		if i < 0 {
+			return nil, errors.New("integer overflow: negative index")
+		}
 		ret[freq.Key] = uint(i)
 	}
 	return ret, nil
@@ -207,7 +204,6 @@ func (c *compressor) frequenciesToMap(freqs []Frequency) (keys map[interface{}]u
 // output the data, the compressed keymap, and the version byte, which is the whole
 // encodeded compressed output.
 func (c *compressor) output(freqsSorted []Frequency, keys map[interface{}]uint) (output []byte, err error) {
-
 	version := Version(1)
 	data, err := c.outputData(keys)
 	if err != nil {
@@ -224,7 +220,6 @@ func (c *compressor) output(freqsSorted []Frequency, keys map[interface{}]uint) 
 // keyMap. If we come across white-listed values, replace them with an
 // "external marker", followed by their position in the keyMap.
 func (c *compressor) outputData(keys map[interface{}]uint) (output []byte, err error) {
-
 	var data outputter
 
 	hooks := data.decoderHooks()
@@ -292,11 +287,10 @@ func (c *compressor) outputData(keys map[interface{}]uint) (output []byte, err e
 // outputCompressedKeymap msgpack encodes the keymap and then runs
 // `flate.Compress` on the output (which is gzip without the headers).
 // We're hand-encoding this map using our msgpack encoder. Note that we're
-// not compressing the keymap directly, but rather the frequence array
+// not compressing the keymap directly, but rather the frequencies array
 // that we derive the keymap from. This is so that we get determinstic
 // output, since ranging of a map in Go is non-deterministic and randomized.
 func (c *compressor) outputCompressedKeymap(freqsSorted []Frequency) (output []byte, err error) {
-
 	var keymap outputter
 
 	// Now write out a msgpack dictionary for the keymaps;
@@ -308,6 +302,9 @@ func (c *compressor) outputCompressedKeymap(freqsSorted []Frequency) (output []b
 	}
 	for i, v := range freqsSorted {
 		// Note that we reverse the map to make decoding easier
+		if i < 0 {
+			return nil, errors.New("integer overflow: negative index")
+		}
 		err = keymap.outputInt(msgpackIntFromUint(uint(i)))
 		if err != nil {
 			return nil, err
@@ -333,7 +330,6 @@ type Version int
 // 3-value array, the version prefix, the encoded data, and the compressed, encoded
 // keyMap.
 func (c *compressor) outputFinalProduct(version Version, data []byte, compressedKeymap []byte) (output []byte, err error) {
-
 	var ret outputter
 
 	// 3 elements in the array, so output '3'
@@ -341,7 +337,10 @@ func (c *compressor) outputFinalProduct(version Version, data []byte, compressed
 	if err != nil {
 		return nil, err
 	}
-	err = ret.outputInt(msgpackIntFromUint(uint(version)))
+	if int(version) < 0 {
+		return nil, errors.New("integer overflow: negative version")
+	}
+	err = ret.outputInt(msgpackIntFromUint(uint(version))) //nolint:gosec // G115: checked for negative above
 	if err != nil {
 		return nil, err
 	}

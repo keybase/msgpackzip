@@ -21,7 +21,6 @@ func Inflate(input []byte) (output []byte, err error) {
 }
 
 func (c *inflator) run() (output []byte, err error) {
-
 	version, compressedData, compressedKeymap, err := c.openOuter()
 	if err != nil {
 		return nil, err
@@ -44,7 +43,6 @@ func (c *inflator) run() (output []byte, err error) {
 }
 
 func (c *inflator) openOuter() (version int, compressedData []byte, compressedKeymap []byte, err error) {
-
 	idx := 0
 
 	hooks := msgpackDecoderHooks{
@@ -150,7 +148,7 @@ func (c *inflator) inflateKeymap(compressedKeymap []byte) (keymap map[uint]inter
 					if err != nil {
 						return err
 					}
-					return putKey(uint(i))
+					return putKey(uint(i)) //nolint:gosec // G115: toLen() validates i is non-negative and bounded
 				},
 				fallthroughHook: fallthroughHook,
 			}
@@ -228,7 +226,7 @@ func (c *inflator) inflateData(keymap map[uint]interface{}, compressedData []byt
 				if err != nil {
 					return err
 				}
-				key, ok := keymap[uint(i)]
+				key, ok := keymap[uint(i)] //nolint:gosec // G115: toLen() validates i is non-negative and bounded
 				if !ok {
 					return fmt.Errorf("Unknown map key: %d", i)
 				}

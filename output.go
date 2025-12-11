@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"math"
 )
 
 type outputter struct {
@@ -45,7 +47,6 @@ func (o *outputter) outputPrefixAndBinaryInt(b byte, i interface{}) error {
 }
 
 func (o *outputter) outputContainerPrefix(i msgpackInt, fixed byte, numFixed byte, u8 byte, u16 byte, u32 byte) (err error) {
-
 	switch i.typ {
 	case intTypeFixedUint:
 		if fixed != 0x0 && byte(i.val) <= numFixed {
@@ -66,12 +67,18 @@ func (o *outputter) outputContainerPrefix(i msgpackInt, fixed byte, numFixed byt
 		if err != nil {
 			return err
 		}
+		if i.val < 0 || i.val > math.MaxUint16 {
+			return errors.New("integer overflow: value out of range for uint16")
+		}
 		err = o.outputBinaryInt(uint16(i.val))
 		return err
 	case intTypeUint32:
 		err = o.outputByte(u32)
 		if err != nil {
 			return err
+		}
+		if i.val < 0 || i.val > math.MaxUint32 {
+			return errors.New("integer overflow: value out of range for uint32")
 		}
 		err = o.outputBinaryInt(uint32(i.val))
 		return err
@@ -115,22 +122,46 @@ func (o *outputter) outputBool(b bool) error {
 func (o *outputter) outputInt(i msgpackInt) error {
 	switch i.typ {
 	case intTypeFixedUint:
+		if i.val < 0 || i.val > 0x7f {
+			return errors.New("integer overflow: value out of range for fixed uint")
+		}
 		return o.outputByte(byte(i.val))
 	case intTypeFixedInt:
+		if i.val < -32 || i.val >= 0 {
+			return errors.New("integer overflow: value out of range for fixed int")
+		}
 		return o.outputByte(byte(0x100 + i.val))
 	case intTypeUint8:
+		if i.val < 0 || i.val > math.MaxUint8 {
+			return errors.New("integer overflow: value out of range for uint8")
+		}
 		return o.outputPrefixAndBinaryInt(0xcc, uint8(i.val))
 	case intTypeUint16:
+		if i.val < 0 || i.val > math.MaxUint16 {
+			return errors.New("integer overflow: value out of range for uint16")
+		}
 		return o.outputPrefixAndBinaryInt(0xcd, uint16(i.val))
 	case intTypeUint32:
+		if i.val < 0 || i.val > math.MaxUint32 {
+			return errors.New("integer overflow: value out of range for uint32")
+		}
 		return o.outputPrefixAndBinaryInt(0xce, uint32(i.val))
 	case intTypeUint64:
 		return o.outputPrefixAndBinaryInt(0xcf, i.uval)
 	case intTypeInt8:
+		if i.val < math.MinInt8 || i.val > math.MaxInt8 {
+			return fmt.Errorf("integer overflow: value %d out of range for int8 [%d, %d]", i.val, math.MinInt8, math.MaxInt8)
+		}
 		return o.outputPrefixAndBinaryInt(0xd0, int8(i.val))
 	case intTypeInt16:
+		if i.val < math.MinInt16 || i.val > math.MaxInt16 {
+			return errors.New("integer overflow: value out of range for int16")
+		}
 		return o.outputPrefixAndBinaryInt(0xd1, int16(i.val))
 	case intTypeInt32:
+		if i.val < math.MinInt32 || i.val > math.MaxInt32 {
+			return errors.New("integer overflow: value out of range for int32")
+		}
 		return o.outputPrefixAndBinaryInt(0xd2, int32(i.val))
 	case intTypeInt64:
 		return o.outputPrefixAndBinaryInt(0xd3, i.val)
@@ -184,6 +215,12 @@ func (o *outputter) outputStringOrUintOrBinary(i interface{}) error {
 	case string:
 		return o.outputString(msgpackIntFromUint(uint(len(t))), t)
 	case int64:
+		if t < 0 {
+			return errors.New("integer overflow: cannot convert negative int64 to uint")
+		}
+		if uint64(t) > math.MaxUint {
+			return errors.New("integer overflow: int64 value exceeds uint max")
+		}
 		return o.outputInt(msgpackIntFromUint(uint(t)))
 	default:
 		return errors.New("Unhandled map key interface type in output path")
