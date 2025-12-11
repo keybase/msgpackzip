@@ -7,15 +7,13 @@ import (
 	"math"
 )
 
-var (
-	ErrMaxDepth        = errors.New("input exceeded maximum allowed depth")
-	ErrContainerTooBig = errors.New("container allocation is too big")
-	ErrStringTooBig    = errors.New("string allocation is too big")
-	ErrBinaryTooBig    = errors.New("binary allocation is too big")
-	ErrLenTooBig       = errors.New("Lengths bigger than 0x8000000 are too big")
-	ErrIntTooBig       = errors.New("Cannot handle ints largers than int64 max")
-	ErrExtTooBig       = errors.New("extenal data type too big")
-)
+var ErrMaxDepth = errors.New("input exceeded maximum allowed depth")
+var ErrContainerTooBig = errors.New("container allocation is too big")
+var ErrStringTooBig = errors.New("string allocation is too big")
+var ErrBinaryTooBig = errors.New("binary allocation is too big")
+var ErrLenTooBig = errors.New("Lenghts bigger than 0x8000000 are too big")
+var ErrIntTooBig = errors.New("Cannot handle ints largers than int64 max")
+var ErrExtTooBig = errors.New("extenal data type too big")
 
 type intType int
 
@@ -38,14 +36,12 @@ type msgpackInt struct {
 	uval uint64
 }
 
-const (
-	bigLen        = 0x8000000
-	bigString     = bigLen
-	bigBinary     = bigLen
-	bigArray      = 0x100000
-	bigStackDepth = 0x100
-	bigExt        = bigLen
-)
+const bigLen = 0x8000000
+const bigString = bigLen
+const bigBinary = bigLen
+const bigArray = 0x100000
+const bigStackDepth = 0x100
+const bigExt = bigLen
 
 func (i msgpackInt) toLen() (int, error) {
 	if i.typ == intTypeUint64 {
@@ -53,9 +49,6 @@ func (i msgpackInt) toLen() (int, error) {
 			return 0, ErrLenTooBig
 		}
 		return int(i.uval), nil
-	}
-	if i.val < 0 {
-		return 0, errors.New("integer overflow: negative length")
 	}
 	if i.val >= int64(bigLen) {
 		return 0, ErrLenTooBig
@@ -75,12 +68,12 @@ func (i msgpackInt) toInt64() (int64, error) {
 
 func (i msgpackInt) toUint32() (uint32, error) {
 	if i.typ == intTypeUint64 {
-		if i.uval > math.MaxUint32 {
+		if i.uval >= uint64(math.MaxUint32) {
 			return 0, ErrIntTooBig
 		}
 		return uint32(i.uval), nil
 	}
-	if i.val < 0 || i.val > int64(math.MaxUint32) {
+	if i.val >= int64(math.MaxUint32) {
 		return 0, ErrIntTooBig
 	}
 	return uint32(i.val), nil
@@ -100,8 +93,7 @@ func msgpackIntFromUint(u uint) msgpackInt {
 	default:
 		return msgpackInt{typ: intTypeUint64, uval: uint64(u)}
 	}
-	// Safe conversion: u <= MaxUint32 < MaxInt64
-	return msgpackInt{typ: typ, val: int64(u)} //nolint:gosec // G115: conversion is safe, u <= MaxUint32 < MaxInt64
+	return msgpackInt{typ: typ, val: int64(u)}
 }
 
 type msgpackDecoderHooks struct {
@@ -634,7 +626,7 @@ func (m *msgpackDecoder) decode(s decodeStack) (err error) {
 		if err != nil {
 			return err
 		}
-		return m.produceInt(s, msgpackInt{typ: intTypeInt8, val: int64(int8(i))})
+		return m.produceInt(s, msgpackInt{typ: intTypeInt8, val: int64(i)})
 
 	// int16
 	case b == 0xd1:
