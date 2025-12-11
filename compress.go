@@ -100,10 +100,7 @@ func (c *compressor) run() (output []byte, err error) {
 	if err != nil {
 		return nil, err
 	}
-	keys, err := c.frequenciesToMap(freqsSorted)
-	if err != nil {
-		return nil, err
-	}
+	keys := c.frequenciesToMap(freqsSorted)
 	output, err = c.output(freqsSorted, keys)
 	return output, err
 }
@@ -190,15 +187,12 @@ func (c *compressor) sortFrequencies(freqs map[interface{}]int) []Frequency {
 // where the RHS values are ordered 0 to N. The idea is that the most frequent
 // keys get ths smallest values, which take of the least space when msgpack encoded.
 // This function returns the "keyMap" referred to later.
-func (c *compressor) frequenciesToMap(freqs []Frequency) (map[interface{}]uint, error) {
+func (c *compressor) frequenciesToMap(freqs []Frequency) map[interface{}]uint {
 	ret := make(map[interface{}]uint, len(freqs))
 	for i, freq := range freqs {
-		if i < 0 {
-			return nil, errors.New("integer overflow: negative index")
-		}
-		ret[freq.Key] = uint(i)
+		ret[freq.Key] = uint(i) //nolint:gosec // G115: range index is always non-negative
 	}
-	return ret, nil
+	return ret
 }
 
 // output the data, the compressed keymap, and the version byte, which is the whole
@@ -302,10 +296,7 @@ func (c *compressor) outputCompressedKeymap(freqsSorted []Frequency) (output []b
 	}
 	for i, v := range freqsSorted {
 		// Note that we reverse the map to make decoding easier
-		if i < 0 {
-			return nil, errors.New("integer overflow: negative index")
-		}
-		err = keymap.outputInt(msgpackIntFromUint(uint(i)))
+		err = keymap.outputInt(msgpackIntFromUint(uint(i))) //nolint:gosec // G115: range index is always non-negative
 		if err != nil {
 			return nil, err
 		}
