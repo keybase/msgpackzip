@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/keybase/msgpackzip"
 )
@@ -17,7 +18,7 @@ func main() {
 	}
 
 	inputPath := args[0]
-	in, err := os.ReadFile(inputPath)
+	in, err := os.ReadFile(filepath.Clean(inputPath))
 	if err != nil {
 		fmt.Printf("Unable to read input file: %v\n", err)
 		os.Exit(3)
@@ -29,7 +30,7 @@ func main() {
 	}
 	outputPath := fmt.Sprintf("%s.mpzip", inputPath)
 	fmt.Printf("Outputting compressed data to %s\n", outputPath)
-	if err := os.WriteFile(outputPath, out, 0644); err != nil {
+	if err := os.WriteFile(outputPath, out, 0o644); err != nil { //nolint:gosec // G306: output files are intentionally world-readable
 		fmt.Printf("Unable to write output: %v\n", err)
 		os.Exit(3)
 	}

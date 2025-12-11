@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -50,7 +51,7 @@ func loadTestVector(t *testing.T, tv testVector) []byte {
 	var data string
 	var err error
 	if tv.inFile {
-		path := filepath.Join("testdata", tv.data) // relative path
+		path := filepath.Clean(filepath.Join("testdata", tv.data)) // relative path
 		raw, err := os.ReadFile(path)
 		data = string(raw)
 		require.NoError(t, err)
@@ -124,4 +125,165 @@ func TestCompressWithWhitelist(t *testing.T) {
 	dat2, err := Inflate(out)
 	require.NoError(t, err)
 	require.True(t, bytes.Equal(b, dat2))
+}
+
+func TestIntegerOverflowProtection(t *testing.T) {
+	t.Run("msgpackInt_toUint32_overflow", func(t *testing.T) {
+		// Test uint64 value exceeding MaxUint32
+		mpi := msgpackInt{typ: intTypeUint64, uval: uint64(math.MaxUint32) + 1}
+		_, err := mpi.toUint32()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "int")
+
+		// Test negative int64 value
+		mpi = msgpackInt{typ: intTypeInt32, val: -1}
+		_, err = mpi.toUint32()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "int")
+
+		// Test int64 value exceeding MaxUint32
+		mpi = msgpackInt{typ: intTypeInt64, val: int64(math.MaxUint32) + 1}
+		_, err = mpi.toUint32()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "int")
+	})
+
+	t.Run("msgpackInt_toLen_negative", func(t *testing.T) {
+		// Test negative length
+		mpi := msgpackInt{typ: intTypeInt32, val: -1}
+		_, err := mpi.toLen()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "negative length")
+	})
+
+	t.Run("outputInt_range_validation", func(t *testing.T) {
+		var o outputter
+
+		// Test uint8 overflow
+		mpi := msgpackInt{typ: intTypeUint8, val: 256}
+		err := o.outputInt(mpi)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "uint8")
+
+		// Test uint16 overflow
+		mpi = msgpackInt{typ: intTypeUint16, val: 65536}
+		err = o.outputInt(mpi)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "uint16")
+
+		// Test uint32 overflow
+		mpi = msgpackInt{typ: intTypeUint32, val: int64(math.MaxUint32) + 1}
+		err = o.outputInt(mpi)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "uint32")
+
+		// Test int8 underflow
+		mpi = msgpackInt{typ: intTypeInt8, val: -129}
+		err = o.outputInt(mpi)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "int8")
+
+		// Test int8 overflow
+		mpi = msgpackInt{typ: intTypeInt8, val: 128}
+		err = o.outputInt(mpi)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "int8")
+
+		// Test int16 underflow
+		mpi = msgpackInt{typ: intTypeInt16, val: -32769}
+		err = o.outputInt(mpi)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "int16")
+
+		// Test int16 overflow
+		mpi = msgpackInt{typ: intTypeInt16, val: 32768}
+		err = o.outputInt(mpi)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "int16")
+
+		// Test int32 underflow
+		mpi = msgpackInt{typ: intTypeInt32, val: int64(math.MinInt32) - 1}
+		err = o.outputInt(mpi)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "int32")
+
+		// Test int32 overflow
+		mpi = msgpackInt{typ: intTypeInt32, val: int64(math.MaxInt32) + 1}
+		err = o.outputInt(mpi)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "int32")
+
+		// Test negative value for fixed uint
+		mpi = msgpackInt{typ: intTypeFixedUint, val: -1}
+		err = o.outputInt(mpi)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "fixed uint")
+
+		// Test out of range for fixed int
+		mpi = msgpackInt{typ: intTypeFixedInt, val: 0}
+		err = o.outputInt(mpi)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "fixed int")
+	})
+
+	t.Run("outputStringOrUintOrBinary_negative_int64", func(t *testing.T) {
+		var o outputter
+
+		// Test negative int64 conversion to uint
+		err := o.outputStringOrUintOrBinary(int64(-1))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "negative int64")
+	})
+
+	t.Run("outputContainerPrefix_overflow", func(t *testing.T) {
+		var o outputter
+
+		// Test uint16 overflow in container prefix
+		mpi := msgpackInt{typ: intTypeUint16, val: 65536}
+		err := o.outputContainerPrefix(mpi, 0xa0, 0x1f, 0xd9, 0xda, 0xdb)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "uint16")
+
+		// Test uint32 overflow in container prefix
+		mpi = msgpackInt{typ: intTypeUint32, val: int64(math.MaxUint32) + 1}
+		err = o.outputContainerPrefix(mpi, 0xa0, 0x1f, 0xd9, 0xda, 0xdb)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "uint32")
+	})
+
+	t.Run("valid_conversions_should_pass", func(t *testing.T) {
+		var o outputter
+
+		// Test valid uint8
+		mpi := msgpackInt{typ: intTypeUint8, val: 255}
+		err := o.outputInt(mpi)
+		require.NoError(t, err)
+
+		// Test valid int8 (negative)
+		mpi = msgpackInt{typ: intTypeInt8, val: -128}
+		err = o.outputInt(mpi)
+		require.NoError(t, err)
+
+		// Test valid int8 (positive)
+		mpi = msgpackInt{typ: intTypeInt8, val: 127}
+		err = o.outputInt(mpi)
+		require.NoError(t, err)
+
+		// Test valid uint32
+		mpi = msgpackInt{typ: intTypeUint32, val: math.MaxUint32}
+		err = o.outputInt(mpi)
+		require.NoError(t, err)
+
+		// Test valid toUint32
+		mpi = msgpackInt{typ: intTypeUint32, val: math.MaxUint32}
+		val, err := mpi.toUint32()
+		require.NoError(t, err)
+		require.Equal(t, uint32(math.MaxUint32), val)
+
+		// Test valid toLen
+		mpi = msgpackInt{typ: intTypeUint32, val: 1000}
+		length, err := mpi.toLen()
+		require.NoError(t, err)
+		require.Equal(t, 1000, length)
+	})
 }
