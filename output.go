@@ -34,11 +34,11 @@ func (o *outputter) outputByte(b byte) error {
 	return err
 }
 
-func (o *outputter) outputBinaryInt(i interface{}) error {
+func (o *outputter) outputBinaryInt(i any) error {
 	return binary.Write(&o.buf, binary.BigEndian, i)
 }
 
-func (o *outputter) outputPrefixAndBinaryInt(b byte, i interface{}) error {
+func (o *outputter) outputPrefixAndBinaryInt(b byte, i any) error {
 	err := o.outputByte(b)
 	if err != nil {
 		return err
@@ -208,7 +208,7 @@ func (o *outputter) decoderHooks() msgpackDecoderHooks {
 	}
 }
 
-func (o *outputter) outputStringOrUintOrBinary(i interface{}) error {
+func (o *outputter) outputStringOrUintOrBinary(i any) error {
 	switch t := i.(type) {
 	case BinaryMapKey:
 		return o.outputBinary(msgpackIntFromUint(uint(len(t))), []byte(t))
@@ -230,7 +230,7 @@ func (o *outputter) outputStringOrUintOrBinary(i interface{}) error {
 // we we substitute in a binary or string for something in our dictionary,
 // we output it as a big endian integer, prefixed by the "external" byte.
 func (o *outputter) outputExtUint(u uint) error {
-	var i interface{}
+	var i any
 	var b byte
 	switch {
 	case u <= 0xff:
