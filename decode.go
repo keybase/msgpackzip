@@ -118,7 +118,7 @@ type msgpackDecoderHooks struct {
 	float64Hook     func(b []byte) error
 	boolHook        func(b bool) error
 	extHook         func(b []byte) error
-	fallthroughHook func(i interface{}, s string) error
+	fallthroughHook func(i any, s string) error
 }
 
 func readByte(r io.Reader) (byte, error) {
@@ -360,7 +360,7 @@ func (m *msgpackDecoder) decodeArray(s decodeStack, n msgpackInt) (err error) {
 	if numItems > bigArray {
 		return ErrContainerTooBig
 	}
-	for i := 0; i < numItems; i++ {
+	for range numItems {
 		err = m.decodeArrayElement(s)
 		if err != nil {
 			return err
@@ -420,7 +420,7 @@ func (m *msgpackDecoder) decodeMap(s decodeStack, n msgpackInt) (err error) {
 	if numItems > bigArray {
 		return ErrContainerTooBig
 	}
-	for i := 0; i < numItems; i++ {
+	for range numItems {
 		err = m.decodeMapPair(s)
 		if err != nil {
 			return err

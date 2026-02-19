@@ -115,8 +115,8 @@ type BinaryMapKey string
 // The map is of type `map[interface{}]int`, which the `interface{}` can
 // be an int64, a plain old string, or a binary []byte buffer wrapped in a
 // BinaryMapKey.
-func (c *compressor) collectFrequencies() (ret map[interface{}]int, err error) {
-	ret = make(map[interface{}]int)
+func (c *compressor) collectFrequencies() (ret map[any]int, err error) {
+	ret = make(map[any]int)
 	hooks := msgpackDecoderHooks{
 		mapKeyHook: func(d decodeStack) (decodeStack, error) {
 			d.hooks = msgpackDecoderHooks{
@@ -136,7 +136,7 @@ func (c *compressor) collectFrequencies() (ret map[interface{}]int, err error) {
 					}
 					return nil
 				},
-				fallthroughHook: func(i interface{}, _ string) error {
+				fallthroughHook: func(i any, _ string) error {
 					return fmt.Errorf("bad map key (type %T)", i)
 				},
 			}
@@ -167,12 +167,12 @@ func (c *compressor) collectFrequencies() (ret map[interface{}]int, err error) {
 // or a BinaryMapKey (which is a wrapper around a binary buffer). The `Freq` field
 // is a count for how many times the `Key` shows up in the encoded msgpack object.
 type Frequency struct {
-	Key  interface{}
+	Key  any
 	Freq int
 }
 
 // sortFrequencies converts a map of (keys -> counts) into an ordered vector of frequencies.
-func (c *compressor) sortFrequencies(freqs map[interface{}]int) []Frequency {
+func (c *compressor) sortFrequencies(freqs map[any]int) []Frequency {
 	ret := make([]Frequency, len(freqs))
 	var i int
 	for k, v := range freqs {
@@ -187,8 +187,8 @@ func (c *compressor) sortFrequencies(freqs map[interface{}]int) []Frequency {
 // where the RHS values are ordered 0 to N. The idea is that the most frequent
 // keys get ths smallest values, which take of the least space when msgpack encoded.
 // This function returns the "keyMap" referred to later.
-func (c *compressor) frequenciesToMap(freqs []Frequency) map[interface{}]uint {
-	ret := make(map[interface{}]uint, len(freqs))
+func (c *compressor) frequenciesToMap(freqs []Frequency) map[any]uint {
+	ret := make(map[any]uint, len(freqs))
 	for i, freq := range freqs {
 		ret[freq.Key] = uint(i) //nolint:gosec // G115: range index is always non-negative
 	}
@@ -197,7 +197,7 @@ func (c *compressor) frequenciesToMap(freqs []Frequency) map[interface{}]uint {
 
 // output the data, the compressed keymap, and the version byte, which is the whole
 // encodeded compressed output.
-func (c *compressor) output(freqsSorted []Frequency, keys map[interface{}]uint) (output []byte, err error) {
+func (c *compressor) output(freqsSorted []Frequency, keys map[any]uint) (output []byte, err error) {
 	version := Version(1)
 	data, err := c.outputData(keys)
 	if err != nil {
@@ -213,7 +213,7 @@ func (c *compressor) output(freqsSorted []Frequency, keys map[interface{}]uint) 
 // outputData, replacing all map Keys with their corresponding uints in the
 // keyMap. If we come across white-listed values, replace them with an
 // "external marker", followed by their position in the keyMap.
-func (c *compressor) outputData(keys map[interface{}]uint) (output []byte, err error) {
+func (c *compressor) outputData(keys map[any]uint) (output []byte, err error) {
 	var data outputter
 
 	hooks := data.decoderHooks()
@@ -240,7 +240,7 @@ func (c *compressor) outputData(keys map[interface{}]uint) (output []byte, err e
 				}
 				return data.outputRawUint(val)
 			},
-			fallthroughHook: func(i interface{}, _ string) error {
+			fallthroughHook: func(i any, _ string) error {
 				return fmt.Errorf("bad map key (type %T)", i)
 			},
 		}

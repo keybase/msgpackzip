@@ -83,7 +83,7 @@ func (c *inflator) openOuter() (version int, compressedData []byte, compressedKe
 			idx++
 			return nil
 		},
-		fallthroughHook: func(_ interface{}, typ string) error {
+		fallthroughHook: func(_ any, typ string) error {
 			return fmt.Errorf("unexpected value of type %q at top level", typ)
 		},
 	}
@@ -94,7 +94,7 @@ func (c *inflator) openOuter() (version int, compressedData []byte, compressedKe
 	return version, compressedData, compressedKeymap, nil
 }
 
-func (c *inflator) inflateKeymap(compressedKeymap []byte) (keymap map[uint]interface{}, err error) {
+func (c *inflator) inflateKeymap(compressedKeymap []byte) (keymap map[uint]any, err error) {
 	rawKeymap, err := flateInflate(compressedKeymap)
 	if err != nil {
 		return nil, err
@@ -116,7 +116,7 @@ func (c *inflator) inflateKeymap(compressedKeymap []byte) (keymap map[uint]inter
 		return nil
 	}
 
-	putValue := func(i interface{}) error {
+	putValue := func(i any) error {
 		if !isValue {
 			return errors.New("got a call to putValue when we expected a key")
 		}
@@ -125,7 +125,7 @@ func (c *inflator) inflateKeymap(compressedKeymap []byte) (keymap map[uint]inter
 		return nil
 	}
 
-	fallthroughHook := func(_ interface{}, typ string) error {
+	fallthroughHook := func(_ any, typ string) error {
 		return fmt.Errorf("unexpected value of type %q in keymap", typ)
 	}
 
@@ -138,7 +138,7 @@ func (c *inflator) inflateKeymap(compressedKeymap []byte) (keymap map[uint]inter
 			if err != nil {
 				return d, err
 			}
-			keymap = make(map[uint]interface{}, i)
+			keymap = make(map[uint]any, i)
 			return d, nil
 		},
 		mapKeyHook: func(d decodeStack) (decodeStack, error) {
@@ -216,7 +216,7 @@ func decodeBufToUint32(b []byte) (uint32, error) {
 	}
 }
 
-func (c *inflator) inflateData(keymap map[uint]interface{}, compressedData []byte) (ret []byte, err error) {
+func (c *inflator) inflateData(keymap map[uint]any, compressedData []byte) (ret []byte, err error) {
 	var data outputter
 	hooks := data.decoderHooks()
 	hooks.mapKeyHook = func(d decodeStack) (decodeStack, error) {
@@ -232,7 +232,7 @@ func (c *inflator) inflateData(keymap map[uint]interface{}, compressedData []byt
 				}
 				return data.outputStringOrUintOrBinary(key)
 			},
-			fallthroughHook: func(_ interface{}, typ string) error {
+			fallthroughHook: func(_ any, typ string) error {
 				return fmt.Errorf("Expected only int map keys; got a %q", typ)
 			},
 		}
