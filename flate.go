@@ -28,13 +28,13 @@ func flateCompress(b []byte) ([]byte, error) {
 // result exceeds maxSize bytes. maxSize must be positive.
 func flateInflateWithLimit(b []byte, maxSize int64) ([]byte, error) {
 	zr := flate.NewReader(bytes.NewBuffer(b))
-	defer zr.Close()
+	defer zr.Close() //nolint:errcheck // reader Close only returns decompressor to pool
 	// Read one byte past maxSize to detect oversize; guard against overflow.
-	cap := maxSize
-	if cap < math.MaxInt64 {
-		cap++
+	limit := maxSize
+	if limit < math.MaxInt64 {
+		limit++
 	}
-	out, err := io.ReadAll(io.LimitReader(zr, cap))
+	out, err := io.ReadAll(io.LimitReader(zr, limit))
 	if err != nil {
 		return nil, err
 	}
