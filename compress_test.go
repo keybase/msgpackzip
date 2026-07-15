@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -125,6 +126,139 @@ func TestCompressWithWhitelist(t *testing.T) {
 	dat2, err := Inflate(out)
 	require.NoError(t, err)
 	require.True(t, bytes.Equal(b, dat2))
+}
+
+func TestMemoryLimit(t *testing.T) {
+	t.Run("limitedBuffer_within_limit", func(t *testing.T) {
+		buf := &limitedBuffer{maxSize: 10}
+		n, err := buf.Write([]byte("hello"))
+		require.NoError(t, err)
+		require.Equal(t, 5, n)
+	})
+
+	t.Run("limitedBuffer_at_exact_limit", func(t *testing.T) {
+		buf := &limitedBuffer{maxSize: 5}
+		n, err := buf.Write([]byte("hello"))
+		require.NoError(t, err)
+		require.Equal(t, 5, n)
+	})
+
+	t.Run("limitedBuffer_exceeds_limit", func(t *testing.T) {
+		buf := &limitedBuffer{maxSize: 4}
+		_, err := buf.Write([]byte("hello"))
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrOutputTooBig)
+	})
+
+	t.Run("limitedBuffer_zero_means_no_limit", func(t *testing.T) {
+		buf := &limitedBuffer{maxSize: 0}
+		_, err := buf.Write(bytes.Repeat([]byte("x"), 10000))
+		require.NoError(t, err)
+	})
+
+	t.Run("limitedBuffer_cumulative_writes", func(t *testing.T) {
+		buf := &limitedBuffer{maxSize: 8}
+		_, err := buf.Write([]byte("hello"))
+		require.NoError(t, err)
+		_, err = buf.Write([]byte("world"))
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrOutputTooBig)
+	})
+
+	t.Run("flateInflateWithLimit_within_limit", func(t *testing.T) {
+		data := bytes.Repeat([]byte("abcdefgh"), 100)
+		compressed, err := flateCompress(data)
+		require.NoError(t, err)
+		out, err := flateInflateWithLimit(compressed, int64(len(data)))
+		require.NoError(t, err)
+		require.Equal(t, data, out)
+	})
+
+	t.Run("flateInflateWithLimit_exceeds_limit", func(t *testing.T) {
+		data := bytes.Repeat([]byte("abcdefgh"), 100)
+		compressed, err := flateCompress(data)
+		require.NoError(t, err)
+		_, err = flateInflateWithLimit(compressed, int64(len(data)-1))
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrOutputTooBig)
+	})
+
+	t.Run("InflateWithLimit_sufficient_limit", func(t *testing.T) {
+		original := loadTestVector(t, vectors[0])
+		compressed, err := Compress(original)
+		require.NoError(t, err)
+		out, err := InflateWithLimit(compressed, int64(len(original))*2)
+		require.NoError(t, err)
+		require.Equal(t, original, out)
+	})
+
+	t.Run("InflateWithLimit_too_small_limit", func(t *testing.T) {
+		original := loadTestVector(t, vectors[0])
+		compressed, err := Compress(original)
+		require.NoError(t, err)
+		_, err = InflateWithLimit(compressed, 1)
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrOutputTooBig)
+	})
+
+	t.Run("InflateWithLimit_exact_size_limit", func(t *testing.T) {
+		original := loadTestVector(t, vectors[0])
+		compressed, err := Compress(original)
+		require.NoError(t, err)
+		out, err := InflateWithLimit(compressed, int64(len(original)))
+		require.NoError(t, err)
+		require.Equal(t, original, out)
+	})
+
+	// Regression: maxSize+1 overflowed to MinInt64 when maxSize==math.MaxInt64,
+	// making LimitReader return EOF immediately.
+	t.Run("flateInflateWithLimit_maxInt64_does_not_overflow", func(t *testing.T) {
+		data := bytes.Repeat([]byte("abcdefgh"), 100)
+		compressed, err := flateCompress(data)
+		require.NoError(t, err)
+		out, err := flateInflateWithLimit(compressed, math.MaxInt64)
+		require.NoError(t, err)
+		require.Equal(t, data, out)
+	})
+
+	// Regression: InflateWithLimit used c.maxSize as the keymap decompression limit,
+	// so a payload whose internal keymap exceeded maxSize was wrongly rejected even
+	// when the actual output was within the caller's limit.
+	t.Run("InflateWithLimit_limit_applies_to_output_not_keymap", func(t *testing.T) {
+		// Use a vector with a non-trivial keymap; compress it, then inflate with a
+		// limit equal to the original size — if the keymap limit were misapplied the
+		// internal keymap bytes would count against the budget and this would fail.
+		original := loadTestVector(t, vectors[2]) // thread-106, large keymap
+		compressed, err := Compress(original)
+		require.NoError(t, err)
+		out, err := InflateWithLimit(compressed, int64(len(original)))
+		require.NoError(t, err)
+		require.Equal(t, original, out)
+	})
+
+	// Regression: Inflate() (no limit) was given a hard 128 MB cap on inflateData
+	// output that Compress() does not enforce, breaking the Compress→Inflate invariant.
+	t.Run("Inflate_roundtrip_invariant", func(t *testing.T) {
+		for _, v := range vectors {
+			original := loadTestVector(t, v)
+			compressed, err := Compress(original)
+			require.NoError(t, err)
+			out, err := Inflate(compressed)
+			require.NoError(t, err)
+			require.Equal(t, original, out, "round-trip failed for %s", v.name)
+		}
+	})
+
+	// guardAlloc should be a no-op (not panic or error) for readers that don't
+	// implement Len(), so the guard stays safe for future reader types.
+	t.Run("guardAlloc_passthrough_for_non_len_reader", func(t *testing.T) {
+		// Wrap in a struct that exposes only io.Reader, hiding Len().
+		type plainReader struct{ io.Reader }
+		r := plainReader{bytes.NewBuffer([]byte("hello"))}
+		// Should return nil (no Len() method — type assertion misses).
+		err := guardAlloc(r, 100)
+		require.NoError(t, err)
+	})
 }
 
 func TestIntegerOverflowProtection(t *testing.T) {
