@@ -8,8 +8,31 @@ import (
 	"math"
 )
 
+// limitedBuffer wraps bytes.Buffer and rejects writes that would push the
+// total past maxSize (0 = no limit). It tracks total bytes written rather
+// than using Len() so the check remains correct even if the buffer is
+// partially drained between writes.
+type limitedBuffer struct {
+	bytes.Buffer
+	maxSize int64
+	written int64
+}
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	if b.maxSize > 0 && b.written+int64(len(p)) > b.maxSize {
+		return 0, ErrOutputTooBig
+	}
+	n, err := b.Buffer.Write(p)
+	b.written += int64(n)
+	return n, err
+}
+
 type outputter struct {
-	buf bytes.Buffer
+	buf limitedBuffer
+}
+
+func newOutputterWithLimit(maxSize int64) outputter {
+	return outputter{buf: limitedBuffer{maxSize: maxSize}}
 }
 
 func (o *outputter) Bytes() []byte {

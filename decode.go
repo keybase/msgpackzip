@@ -1,6 +1,7 @@
 package msgpackzip
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -12,6 +13,7 @@ var (
 	ErrContainerTooBig = errors.New("container allocation is too big")
 	ErrStringTooBig    = errors.New("string allocation is too big")
 	ErrBinaryTooBig    = errors.New("binary allocation is too big")
+	ErrOutputTooBig    = errors.New("decompressed output exceeds limit")
 	ErrLenTooBig       = errors.New("Lengths bigger than 0x8000000 are too big")
 	ErrIntTooBig       = errors.New("Cannot handle ints largers than int64 max")
 	ErrExtTooBig       = errors.New("extenal data type too big")
@@ -119,6 +121,15 @@ type msgpackDecoderHooks struct {
 	boolHook        func(b bool) error
 	extHook         func(b []byte) error
 	fallthroughHook func(i any, s string) error
+}
+
+// guardAlloc returns io.ErrUnexpectedEOF if the underlying reader has fewer than
+// need bytes available, preventing large pre-allocations from crafted headers.
+func guardAlloc(r io.Reader, need int) error {
+	if buf, ok := r.(*bytes.Buffer); ok && buf.Len() < need {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
 }
 
 func readByte(r io.Reader) (byte, error) {
@@ -283,6 +294,9 @@ func (m *msgpackDecoder) decodeString(s decodeStack, i msgpackInt) (err error) {
 	if l > bigString {
 		return ErrStringTooBig
 	}
+	if err := guardAlloc(m.r, l); err != nil {
+		return err
+	}
 	buf := make([]byte, l)
 	_, err = io.ReadFull(m.r, buf)
 	if err != nil {
@@ -298,6 +312,9 @@ func (m *msgpackDecoder) decodeBinary(s decodeStack, i msgpackInt) (err error) {
 	}
 	if l > bigBinary {
 		return ErrBinaryTooBig
+	}
+	if err := guardAlloc(m.r, l); err != nil {
+		return err
 	}
 	buf := make([]byte, l)
 	_, err = io.ReadFull(m.r, buf)
@@ -442,6 +459,9 @@ func (m *msgpackDecoder) produceExt(s decodeStack, b []byte) (err error) {
 func (m *msgpackDecoder) decodeExt(s decodeStack, n uint32) (err error) {
 	if n > bigExt {
 		return ErrExtTooBig
+	}
+	if err := guardAlloc(m.r, int(n)); err != nil { //nolint:gosec // G115: n <= bigExt < MaxInt32
+		return err
 	}
 	buf := make([]byte, n)
 	_, err = io.ReadFull(m.r, buf)

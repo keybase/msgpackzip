@@ -9,15 +9,28 @@ import (
 )
 
 type inflator struct {
-	input *bytes.Buffer
+	input   *bytes.Buffer
+	maxSize int64 // 0 = no limit
 }
 
 func newInflator(b []byte) *inflator {
-	return &inflator{input: bytes.NewBuffer(b)}
+	return newInflatorWithLimit(b, 0)
+}
+
+func newInflatorWithLimit(b []byte, maxSize int64) *inflator {
+	return &inflator{input: bytes.NewBuffer(b), maxSize: maxSize}
 }
 
 func Inflate(input []byte) (output []byte, err error) {
 	return newInflator(input).run()
+}
+
+// InflateWithLimit inflates input but returns ErrOutputTooBig if the
+// decompressed output would exceed maxSize bytes. The output limit is enforced
+// incrementally via limitedBuffer. Note: the internal keymap intermediate is
+// always capped at bigLen (128 MB) regardless of maxSize.
+func InflateWithLimit(input []byte, maxSize int64) (output []byte, err error) {
+	return newInflatorWithLimit(input, maxSize).run()
 }
 
 func (c *inflator) run() (output []byte, err error) {
@@ -95,7 +108,9 @@ func (c *inflator) openOuter() (version int, compressedData []byte, compressedKe
 }
 
 func (c *inflator) inflateKeymap(compressedKeymap []byte) (keymap map[uint]any, err error) {
-	rawKeymap, err := flateInflate(compressedKeymap)
+	// Always cap keymap decompression at bigLen regardless of the caller-supplied
+	// output limit: the keymap is an internal intermediate, not part of the output.
+	rawKeymap, err := flateInflateWithLimit(compressedKeymap, bigLen)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +153,7 @@ func (c *inflator) inflateKeymap(compressedKeymap []byte) (keymap map[uint]any, 
 			if err != nil {
 				return d, err
 			}
-			keymap = make(map[uint]any, i)
+			keymap = make(map[uint]any, min(i, len(rawKeymap)/2))
 			return d, nil
 		},
 		mapKeyHook: func(d decodeStack) (decodeStack, error) {
@@ -218,6 +233,9 @@ func decodeBufToUint32(b []byte) (uint32, error) {
 
 func (c *inflator) inflateData(keymap map[uint]any, compressedData []byte) (ret []byte, err error) {
 	var data outputter
+	if c.maxSize > 0 {
+		data = newOutputterWithLimit(c.maxSize)
+	}
 	hooks := data.decoderHooks()
 	hooks.mapKeyHook = func(d decodeStack) (decodeStack, error) {
 		d.hooks = msgpackDecoderHooks{
