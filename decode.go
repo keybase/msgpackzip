@@ -487,6 +487,10 @@ func (m *msgpackDecoder) decode(s decodeStack) (err error) {
 	}
 
 	mask := func(b byte, m int) int64 {
+		// Validate m is within byte range to prevent overflow
+		if m < 0 || m > 255 {
+			return 0
+		}
 		return int64(b & byte(m))
 	}
 	makeFixedUint := func(b byte, m int) msgpackInt {
@@ -654,6 +658,7 @@ func (m *msgpackDecoder) decode(s decodeStack) (err error) {
 		if err != nil {
 			return err
 		}
+		//nolint:gosec // G115: Intentional byte to int8 conversion per msgpack spec
 		return m.produceInt(s, msgpackInt{typ: intTypeInt8, val: int64(int8(i))})
 
 	// int16

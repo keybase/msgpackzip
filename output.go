@@ -72,12 +72,20 @@ func (o *outputter) outputPrefixAndBinaryInt(b byte, i any) error {
 func (o *outputter) outputContainerPrefix(i msgpackInt, fixed byte, numFixed byte, u8 byte, u16 byte, u32 byte) (err error) {
 	switch i.typ {
 	case intTypeFixedUint:
+		// Validate value fits in byte range
+		if i.val < 0 || i.val > 255 {
+			return errors.New("integer overflow: value out of range for fixed uint")
+		}
 		if fixed != 0x0 && byte(i.val) <= numFixed {
 			return o.outputByte(fixed | byte(i.val))
 		}
 		fallthrough
 	case intTypeUint8:
 		if u8 != 0x0 {
+			// Validate value fits in byte range
+			if i.val < 0 || i.val > 255 {
+				return errors.New("integer overflow: value out of range for uint8")
+			}
 			var b [2]byte
 			b[0] = u8
 			b[1] = byte(i.val)
