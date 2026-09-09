@@ -1,8 +1,8 @@
 module github.com/keybase/msgpackzip
 
-go 1.23
+go 1.26.0
 
-toolchain go1.25.5
+toolchain go1.27.1
 
 require github.com/stretchr/testify v1.11.1
 
